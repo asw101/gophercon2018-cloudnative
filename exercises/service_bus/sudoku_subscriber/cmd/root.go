@@ -4,14 +4,19 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
+	"os/signal"
 
 	"github.com/mitchellh/go-homedir"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/Azure/azure-service-bus-go"
 )
 
 var cfgFile string
@@ -34,9 +39,44 @@ const (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "sudoku_subscriber",
-	Short: "Listens to a Service Bus Subscription, solving Sudoku puzzles that are sent across.",
+	Short: "> Listens to a Service Bus Subscription, solving Sudoku puzzles that are sent across.",
 	Run: func(cmd *cobra.Command, args []string) {
-		// Implement exercise 1 here!
+		fmt.Printf("hello world")
+
+		connStr := viper.GetString(namespaceConnection)
+		ns, err := servicebus.NewNamespace(servicebus.NamespaceWithConnectionString(connStr))
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		topic, err := ns.NewTopic("random_ids")
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		subscription, err := topic.NewSubscription("solver1")
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		listenHandle, err := subscription.Receive(context.Background(),
+			func(ctx context.Context, msg *servicebus.Message) servicebus.DispositionAction {
+				fmt.Println(string(msg.Data))
+				return msg.Accept()
+			})
+
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		// Close the listener handle for the Service Bus Queue
+		defer listenHandle.Close(context.Background())
+
+		// Wait for a signal to quit:
+		signalChan := make(chan os.Signal, 1)
+		signal.Notify(signalChan, os.Interrupt, os.Kill)
+		<-signalChan
+
 	},
 	Args: func(cmd *cobra.Command, args []string) error {
 		// Ensure that a namespace connection string was provided.
